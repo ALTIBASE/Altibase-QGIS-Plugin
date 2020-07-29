@@ -79,7 +79,10 @@ Altibase QGIS Plugin을 사용하기 위해서는 다음 항목이 사전에 설
 
 1. Altibase DB에서 불러온 레이어는 Temporary scratch layer이므로 Project로 저장할 수 없다. Project로 저장하기 위해서는 ESRI shapefile 등 다른 타입으로 export 후 저장해야 한다.
 
+2. Altibase DB에서 불러온 레이어의 Attribute 추가, 수정 그리고 삭제 사항은 Altibase DB에 저장되지 않는다. 
 
+3. Altibase DB에서 불러온 레이어 Feature의 Primary Key Attribute 값 수정은 지원하지 않는다.
 
+4. Altibase DB에서 지원하지 않는 Geometry type은 Altibase DB에 저장할 수 없다.
 
-
+5. Altibase DB의 SQL 쿼리 버퍼 크기를 초과하는 WKB Geometry를 가진 Feature는 Altibase DB에 저장할 수 없다.
