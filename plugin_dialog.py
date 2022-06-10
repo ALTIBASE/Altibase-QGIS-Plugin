@@ -419,9 +419,103 @@ class AltibasePluginDialog(QtWidgets.QDialog, FORM_CLASS):
 
         a_layer.editingStarted.connect(lambda: self.editingStarted(a_layer))
         a_layer.editingStopped.connect(lambda: self.editingStopped(a_layer))
-
         a_layer.featureDeleted.connect(lambda featureid: self.featureDeleted(a_layer, featureid))
+                
+        a_layer.selectionChanged.connect(lambda: self.selectionChanged(a_layer))
+        a_layer.featureAdded.connect(lambda: self.featureAdded(a_layer))
+        
+        """# debug signal
+        a_layer.editCommandStarted.connect(self.editCommandStarted)
+        a_layer.attributeAdded.connect(lambda : self.attributeAdded(a_layer))
+        a_layer.attributeValueChanged.connect(self.attributeValueChanged)
+        a_layer.beforeAddingExpressionField.connect(self.beforeAddingExpressionField)
+        a_layer.beforeEditingStarted.connect(self.beforeEditingStarted)
+        a_layer.beforeModifiedCheck.connect(lambda:self.beforeModifiedCheck(a_layer))
+        a_layer.updatedFields.connect(self.updatedFields)        
+        """
 
+    def selectionChanged(self, layer):
+        QgsMessageLog.logMessage('selectionChanged called: ' , 'AltibasePlugin')
+             
+        if layer.selectedFeatureIds():
+           form_config = layer.editFormConfig()
+           form_config.setReadOnly(0, False)
+           layer.setEditFormConfig(form_config)
+           QgsVectorLayerUtils.fieldIsReadOnly(layer, 0)
+        else:
+           form_config = layer.editFormConfig()
+           form_config.setReadOnly(0, True)
+           layer.setEditFormConfig(form_config)
+           QgsVectorLayerUtils.fieldIsReadOnly(layer, 0)
+   
+    def featureAdded(self, a_layer):
+        QgsMessageLog.logMessage('featureAdded called: %s ' % a_layer.selectedFeatureIds(), 'AltibasePlugin')
+        
+        s_totalFid = a_layer.featureCount()                                        
+                                      
+        if a_layer.selectedFeatureIds() == []:
+            for feature in a_layer.getFeatures():        
+                #QgsMessageLog.logMessage( '[debug-featureAdded] before FID = %s' % feature['FID'], 'AltibasePlugin' )
+              
+                if str(feature['FID']) == "NULL":  
+                    
+                    # get total FID count                     
+                    s_rows = self.g_alti_conn.execSelect( "SELECT COUNT(*) FROM SYS.LARD_ADM_SECT_SGG_41" )
+                    s_totalFidCnt = s_rows[0][0]
+                    
+                    if not s_rows:
+                        QgsMessageLog.logMessage('The table does not exist.', 'AltibasePlugin' )
+                        return        
+                                
+                    # get current sequence value
+                    s_rows = self.g_alti_conn.execSelect( "SELECT B.CURRENT_SEQ FROM SYSTEM_.SYS_TABLES_ A, V$SEQ B WHERE A.TABLE_OID = B.SEQ_OID AND A.TABLE_NAME = (SELECT TABLE_NAME FROM SYSTEM_.SYS_TABLES_ WHERE TABLE_TYPE = 'S' AND TABLE_NAME LIKE ( SELECT '%%' || SUBSTR( '%s', INSTR( '%s','.' ) +1 ) || '%%' FROM DUAL ))" % ( a_layer.name(), a_layer.name() ) )
+        
+                    if not s_rows:
+                        QgsMessageLog.logMessage('The sequence does not exist.', 'AltibasePlugin' )
+                        return
+    
+                    s_curSeqVal = s_rows[0][0]
+                    #QgsMessageLog.logMessage( '[debug-featureAdded] current sequence value %d' % s_curSeqVal, 'AltibasePlugin' )
+                        
+                    s_calFidGap = s_totalFidCnt - s_totalFid
+                    
+                    """ TO-DO  편집 -> 객체 생성 -> 확인 -> qgis 종료 시 아래 함수 없으면 비정상 종료
+                        updateFeature는 모든 feature에 대해 수행 하므로 성능에 좋지 않다.
+                        changeAttributeValue()의 함수를 사용 해야 하는데 본 위치에서 변경 되었다고 true 값을 리턴
+                        결과는 값이 변경 되지 않음 
+                        ex> QgsMessageLog.logMessage('changeAttributeValue %d ' % layer.changeAttributeValue( s_totalFid, 0, ( s_curSeqVal - s_calFidGap ), NULL ), 'AltibasePlugin' )"""
+                    feature['FID'] = ( s_curSeqVal - s_calFidGap )
+                    a_layer.updateFeature(feature)                             
+                               
+                    QgsMessageLog.logMessage( '[debug-featureAdded] modified FID = %s' % feature.attributes()[0], 'AltibasePlugin' )                                    
+                    
+                    break
+                """else:
+                    QgsMessageLog.logMessage( '[debug-featureAdded] after FID = %s' % feature.attributes()[0], 'AltibasePlugin' )"""            
+                    
+    """ # debug signal
+    def editCommandStarted(self, text):        
+        QgsMessageLog.logMessage('editCommandStarted called: (%s) ' % text, 'AltibasePlugin')
+
+    def attributeAdded(self, layer):
+        QgsMessageLog.logMessage('attributeAdded called: ' , 'AltibasePlugin')
+                
+    def attributeValueChanged(self):
+        QgsMessageLog.logMessage('attributeValueChanged called: ' , 'AltibasePlugin')
+
+    def beforeAddingExpressionField(self):
+        QgsMessageLog.logMessage('beforeAddingExpressionField called: ' , 'AltibasePlugin')
+    
+    def beforeEditingStarted(self):
+        QgsMessageLog.logMessage('beforeEditingStarted called: ' , 'AltibasePlugin')
+
+    def beforeModifiedCheck(self, layer):
+        QgsMessageLog.logMessage('beforeModifiedCheck called: ' , 'AltibasePlugin')              
+        
+    def updatedFields(self):
+        QgsMessageLog.logMessage('updatedFields called: ' , 'AltibasePlugin')
+    """
+    
     def disconnectSignalsFromLayer(self, a_layer):
         try:
             a_layer.committedFeaturesAdded.disconnect(self.committedFeaturesAdded)
@@ -433,6 +527,9 @@ class AltibasePluginDialog(QtWidgets.QDialog, FORM_CLASS):
             a_layer.editingStopped.disconnect(lambda: self.editingStopped(a_layer))
 
             a_layer.featureDeleted.disconnect(lambda featureid: self.featureDeleted(a_layer, featureid))
+            
+            a_layer.selectionChanged.disconnect(lambda: self.selectionChanged(a_layer))
+            a_layer.featureAdded.disconnect(lambda: self.featureAdded(a_layer))
         except:
             pass
 
@@ -447,7 +544,7 @@ class AltibasePluginDialog(QtWidgets.QDialog, FORM_CLASS):
                 try:
                     self.g_layers_added_features_dic[s_layerid].append(s_feature.id())
                 except Exception as e:
-                    iface.messageBar().pushMessage('AltibasePlugin', 'Error : {0}'.format( e ), Qgis.Critical)
+                    iface.messageBar().pushMessage('AltibasePlugin', 'committedFeaturesAdded Error : {0}'.format( e ), Qgis.Critical)
                     self.g_layers_error_dic[s_layerid] = 1
 
                     mappedlayer.select(s_feature.id())
@@ -474,7 +571,7 @@ class AltibasePluginDialog(QtWidgets.QDialog, FORM_CLASS):
         if self.g_layers_error_dic[ layerid ] == 0:
             fields = mappedlayer.fields()
             pk_list_index = fields.names().index( layer_info['pk'] )
-
+                      
             i=0
             for featureid, attributes in attribute_map.items():
                 try:
@@ -510,7 +607,7 @@ class AltibasePluginDialog(QtWidgets.QDialog, FORM_CLASS):
                     query_dic_list.append(query_dic)
                     i = i+1
                 except Exception as e:
-                    iface.messageBar().pushMessage( 'AltibasePlugin', 'Error : {0}'.format( e ), Qgis.Critical )
+                    iface.messageBar().pushMessage( 'AltibasePlugin', 'committedAttributeValuesChanges Error : {0}'.format( e ), Qgis.Critical )
                     self.g_layers_error_dic[ layerid ] = 1
                     mappedlayer.select( featureid )
                     return
@@ -575,7 +672,7 @@ class AltibasePluginDialog(QtWidgets.QDialog, FORM_CLASS):
                     query_dic_list.append(query_dic)
                     i = i+1
                 except Exception as e:
-                    iface.messageBar().pushMessage( 'AltibasePlugin', 'Error : {0}'.format( e ), Qgis.Critical )
+                    iface.messageBar().pushMessage( 'AltibasePlugin', 'committedGeometriesChanges Error : {0}'.format( e ), Qgis.Critical )
                     self.g_layers_error_dic[ layerid ] = 1
                     mappedlayer.select( featureid )
                     return
@@ -592,7 +689,7 @@ class AltibasePluginDialog(QtWidgets.QDialog, FORM_CLASS):
                     self.g_layer_querys.append(layer_query_dic)
 
     def featureDeleted(self, layer, featureid):
-        QgsMessageLog.logMessage( 'FeaturesDeleted called', 'AltibasePlugin' )
+        QgsMessageLog.logMessage( 'FeaturesDeleted called %d' % featureid, 'AltibasePlugin' )
 
         layerid = layer.id()
 
@@ -617,7 +714,7 @@ class AltibasePluginDialog(QtWidgets.QDialog, FORM_CLASS):
                         pass
 
             except Exception as e:
-                iface.messageBar().pushMessage( 'AltibasePlugin', 'Error : {0}'.format( e ), Qgis.Critical )
+                iface.messageBar().pushMessage( 'AltibasePlugin', 'featureDeleted Error : {0}'.format( e ), Qgis.Critical )
                 self.g_layers_error_dic[ layerid ] = 1
 
                 layer.select( featureid )
@@ -652,22 +749,33 @@ class AltibasePluginDialog(QtWidgets.QDialog, FORM_CLASS):
                         self.g_layers_removed_features_dic[ layerid ].append( featureid )
 
                 except Exception as e:
-                    iface.messageBar().pushMessage( 'AltibasePlugin', 'Error : {0}'.format( e ), Qgis.Critical )
+                    iface.messageBar().pushMessage( 'AltibasePlugin', 'committedFeaturesRemoved Error : {0}'.format( e ), Qgis.Critical )
                     self.g_layers_error_dic[ layerid ] = 1
 
                     mappedlayer.select( featureid )
 
     def editingStarted(self, layer):
         QgsMessageLog.logMessage( 'EditingStarted called... %s[%s]' % (layer.id(), layer.name()), 'AltibasePlugin' )
-
+        
         self.g_layers_error_dic[ layer.id() ] = 0
 
+        if layer.selectedFeatureIds():
+           form_config = layer.editFormConfig()
+           form_config.setReadOnly(0, False)
+           layer.setEditFormConfig(form_config)
+           QgsVectorLayerUtils.fieldIsReadOnly(layer, 0)
+        else:
+           form_config = layer.editFormConfig()
+           form_config.setReadOnly(0, True)
+           layer.setEditFormConfig(form_config)
+           QgsVectorLayerUtils.fieldIsReadOnly(layer, 0)    
+                     
     def editingStopped(self, layer):
         QgsMessageLog.logMessage( 'EditingStopped called', 'AltibasePlugin' )
 
         self.deleteFeaturesFromDb( layer )
         self.insertFeaturesToDb( layer )
-
+       
         if self.g_layers_error_dic[ layer.id() ] != 0:
             QgsMessageLog.logMessage('[%s] An error was found during the Editing and could not be saved' % layer.id(), 'AltibasePlugin')
             return
@@ -756,10 +864,10 @@ class AltibasePluginDialog(QtWidgets.QDialog, FORM_CLASS):
 
     def insertFeaturesToDb(self, layer):
         QgsMessageLog.logMessage( 'insertFeaturesToDb called', 'AltibasePlugin' )
-
+        
         query_dic_list = []
         layer_query_dic = {}
-
+                
         layerid = layer.id()
 
         dict = (item for item in self.g_layers_info if item['id'] == layerid)
@@ -778,23 +886,50 @@ class AltibasePluginDialog(QtWidgets.QDialog, FORM_CLASS):
             i=0
             for featureid in self.g_layers_added_features_dic[ layerid ]:
                 query_dic = {}
-
+                
+                """ debug attribute fid values insert는 editingEnd 이후에 call 됨                                                                         
+                feature = layer.getFeature( featureid )    
+                idx = feature.fieldNameIndex('FID')                   
+                QgsMessageLog.logMessage( '[debug insertFeaturesToDb] attributes FID value =  [ %s ]' %feature.attributes()[idx], 'AltibasePlugin' )    
+                """
+                
                 try:
                     feature = layer.getFeature( featureid )
                     geom_hex = binascii.b2a_hex( feature.geometry().asWkb() ).decode()
-
+                               
+                    # get current sequence name
+                    s_rows = self.g_alti_conn.execSelect( "SELECT A.TABLE_NAME FROM SYSTEM_.SYS_TABLES_ A, V$SEQ B WHERE A.TABLE_OID = B.SEQ_OID AND A.TABLE_NAME = (SELECT TABLE_NAME FROM SYSTEM_.SYS_TABLES_ WHERE TABLE_TYPE = 'S' AND TABLE_NAME LIKE ( SELECT '%%' || SUBSTR( '%s', INSTR( '%s','.' ) +1 ) || '%%' FROM DUAL ))" % ( layer.name(), layer.name() ) )
+        
+                    if not s_rows:
+                        QgsMessageLog.logMessage('The sequence does not exist.', 'AltibasePlugin' )
+                        return
+                    
+                    s_seqName = s_rows[0][0]    
+    
                     ks = []
                     ki = 0
-                    vs = []
-
+                    vs = [] 
+                    ka = 0               
+                        
                     for v in feature.attributes():
-                        ks.append( '"%s"' % fields.names()[ ki ] )
+                        ks.append( '"%s"' % fields.names()[ ki ] )                        
                         ki += 1
                         if str(v) == "NULL":
                             vs.append( "%s" % v )
                         else:
-                            vs.append( "'%s'" % v )
-
+                            """ featureAdded()에서 QGIS의 FID에 값을 설정 하여
+                            현 시점의 QGIS FID값은 NULL이아닌 설정 값으로 들어 가 있음
+                            rollback 처리로 인해 featureAdded()에서 nextval하지 않고
+                            insert 시점에서 nextval 함.
+                            본 함수는 object 생성시에호출 되기 때문에 값이 있는 경우 
+                            nextval로 수행 하도록 함 """
+                            if fields.names()[ka] == "FID":                                
+                                 vs.append( "%s.NEXTVAL" % s_seqName )                                 
+                            else:                        
+                                vs.append( "'%s'" % v )
+                             
+                        ka += 1    
+                                   
                     ks.append( '"%s"' % layer_info['geom'] )
                     vs.append( "st_setsrid(geomfromwkb(BINARY'%s'), %s)" % ( geom_hex, layer_info['srid'] ) )
 
@@ -804,14 +939,14 @@ class AltibasePluginDialog(QtWidgets.QDialog, FORM_CLASS):
                     query_dic['fid'] = featureid
                     query_dic['query'] = s_query
                     query_dic_list.append(query_dic)
-                    i = i+1
-                    #QgsMessageLog.logMessage('[insertFeaturesToDb] %s' % layerid, 'AltibasePlugin')
+                    i = i+1                
+                    
                 except Exception as e:
                     iface.messageBar().pushMessage( 'AltibasePlugin', 'Error : {0}'.format( e ), Qgis.Critical )
                     self.g_layers_error_dic[ layerid ] = 1
                     layer.select( featureid )
                     return
-
+            
             if i>0:
                 dict = (item for item in self.g_layer_querys if item['layerId'] == layerid)
                 org_query_dic_list = next(dict, False)
@@ -821,7 +956,7 @@ class AltibasePluginDialog(QtWidgets.QDialog, FORM_CLASS):
                 else:
                     layer_query_dic['layerId'] = layerid
                     layer_query_dic['querys'] = query_dic_list
-                    self.g_layer_querys.append(layer_query_dic)
-                
+                    self.g_layer_querys.append(layer_query_dic)            
+            
             self.g_layers_added_features_dic[ layerid ].clear()
             #QgsMessageLog.logMessage('[insertFeaturesToDb] %s' % str(self.g_layer_querys), 'AltibasePlugin')
